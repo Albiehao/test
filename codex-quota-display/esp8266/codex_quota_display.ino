@@ -24,15 +24,16 @@ constexpr int SCREEN_HEIGHT = 64;
 constexpr int OLED_RESET = -1;
 constexpr uint8_t OLED_ADDRESS = 0x3C;
 
+// Use raw GPIO numbers so this also compiles when D3/D4/D6 aliases are unavailable.
 // OLED wiring:
-// SDA -> D3 / GPIO0
-// SCL -> D4 / GPIO2
-constexpr uint8_t OLED_SDA = D3;
-constexpr uint8_t OLED_SCL = D4;
+// SDA -> D3 -> GPIO0
+// SCL -> D4 -> GPIO2
+constexpr uint8_t OLED_SDA = 0;
+constexpr uint8_t OLED_SCL = 2;
 
 // Temperature/humidity sensor wiring:
-// DATA -> D6 / GPIO12
-constexpr uint8_t DHT_PIN = D6;
+// DATA -> D6 -> GPIO12
+constexpr uint8_t DHT_PIN = 12;
 #define DHT_TYPE DHT11
 // If your sensor is DHT22, change the line above to: #define DHT_TYPE DHT22
 
@@ -107,7 +108,6 @@ void render() {
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
 
-  // Top line: local sensor data always stays visible.
   display.setCursor(0, 0);
   if (envData.valid) {
     display.print("T:");
@@ -192,7 +192,8 @@ bool fetchStatus() {
   String body = http.getString();
   http.end();
 
-  JsonDocument doc;
+  // ArduinoJson 6.x compatible.
+  StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, body);
   if (error) {
     Serial.printf("JSON error: %s\n", error.c_str());
