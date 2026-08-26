@@ -35,6 +35,8 @@ constexpr uint8_t DHT_PIN = D6;
 #define DHT_TYPE DHT22
 ```
 
+如果你用的是裸 DHT11/DHT22（不是带小板模块），DATA 到 3V3 建议加约 10kΩ 上拉电阻。
+
 > D3(GPIO0) 和 D4(GPIO2) 都参与 ESP8266 启动配置。如果出现插着 OLED 无法启动、拔掉后正常启动，再考虑换到 D2/D1。当前能正常启动就无需改线。
 
 ## Arduino 依赖
