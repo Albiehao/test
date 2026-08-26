@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
+#include <DHT.h>
 
 const char* WIFI_SSID = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
@@ -16,19 +17,27 @@ const char* DEVICE_TOKEN = "CHANGE_ME";
 constexpr uint32_t REFRESH_INTERVAL_MS = 60UL * 1000UL;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000UL;
 constexpr uint32_t HTTP_TIMEOUT_MS = 5000UL;
+constexpr uint32_t SENSOR_INTERVAL_MS = 2500UL;
 
 constexpr int SCREEN_WIDTH = 128;
 constexpr int SCREEN_HEIGHT = 64;
 constexpr int OLED_RESET = -1;
 constexpr uint8_t OLED_ADDRESS = 0x3C;
 
-// Your actual wiring:
+// OLED wiring:
 // SDA -> D3 / GPIO0
 // SCL -> D4 / GPIO2
 constexpr uint8_t OLED_SDA = D3;
 constexpr uint8_t OLED_SCL = D4;
 
+// Temperature/humidity sensor wiring:
+// DATA -> D6 / GPIO12
+constexpr uint8_t DHT_PIN = D6;
+#define DHT_TYPE DHT11
+// If your sensor is DHT22, change the line above to: #define DHT_TYPE DHT22
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+DHT dht(DHT_PIN, DHT_TYPE);
 
 struct CodexStatus {
   bool valid = false;
@@ -38,9 +47,17 @@ struct CodexStatus {
   uint32_t resetSeconds = 0;
 };
 
+struct EnvironmentData {
+  bool valid = false;
+  float temperature = 0.0f;
+  float humidity = 0.0f;
+};
+
 CodexStatus statusData;
+EnvironmentData envData;
 uint32_t lastRefreshAt = 0;
 uint32_t lastWifiRetryAt = 0;
+uint32_t lastSensorAt = 0;
 
 void drawProgressBar(int x, int y, int width, int height, int percent) {
   percent = constrain(percent, 0, 100);
@@ -70,12 +87,37 @@ String formatDuration(uint32_t seconds) {
   return String(buf);
 }
 
+void readEnvironment() {
+  uint32_t now = millis();
+  if (now - lastSensorAt < SENSOR_INTERVAL_MS) return;
+  lastSensorAt = now;
+
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  if (!isnan(humidity) && !isnan(temperature)) {
+    envData.humidity = humidity;
+    envData.temperature = temperature;
+    envData.valid = true;
+  }
+}
+
 void render() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
+
+  // Top line: local sensor data always stays visible.
   display.setCursor(0, 0);
-  display.print("CODEX QUOTA");
+  if (envData.valid) {
+    display.print("T:");
+    display.print(envData.temperature, 1);
+    display.print("C H:");
+    display.print(envData.humidity, 0);
+    display.print("%");
+  } else {
+    display.print("T:--.-C H:--%");
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     display.setCursor(0, 18);
@@ -88,7 +130,7 @@ void render() {
 
   if (!statusData.valid) {
     display.setCursor(0, 18);
-    display.print("Waiting for data...");
+    display.print("Waiting Codex...");
     display.display();
     return;
   }
@@ -169,8 +211,8 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  // ESP8266 Wire.begin(SDA, SCL)
-  Wire.begin(OLED_SDA, OLED_SCL);
+  Wire.begin(OLED_SDA, OLED_SCL); // Wire.begin(SDA, SCL)
+  dht.begin();
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
     Serial.println("SSD1306 init failed");
@@ -181,7 +223,7 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.println("CODEX QUOTA");
+  display.println("CODEX MONITOR");
   display.println("Booting...");
   display.display();
 
@@ -192,6 +234,7 @@ void setup() {
 
 void loop() {
   connectWiFi();
+  readEnvironment();
 
   uint32_t now = millis();
   if (WiFi.status() == WL_CONNECTED &&
